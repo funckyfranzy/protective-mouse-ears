@@ -1,0 +1,87 @@
+// Protective Mouse Ears – Muster
+// Format: siehe MUSTER.md. Kommentare mit // sind erlaubt.
+{
+  "leds": 100,
+  "strom_ma": 900,        // Strombegrenzung (Labornetzteil steht auf 1 A)
+  "start": "atmen",       // Muster nach dem ersten Einschalten
+
+  // 40C3-Styleguide
+  "farben": {
+    "gruen":   "#75B54B",
+    "petrol":  "#13AEA3",
+    "lavendel":"#999FCD",
+    "flieder": "#B78FBF",
+    "pink":    "#EB5D9D",
+    "rosa":    "#EB6F83",
+    "orange":  "#F28931",
+    "gelb":    "#FAB93E",
+    "salbei":  "#7EAE83",
+    "moos":    "#3B5831",
+    "taupe":   "#B69D93",
+    "mokka":   "#584744",
+    "creme":   "#DFEED5",
+    "nacht":   "#031202"
+  },
+
+  // Platzhalter für den 100er-Teststreifen.
+  // [von, bis]: von < bis läuft vorwärts, von > bis rückwärts.
+  // [[..],[..]]: mehrere Stränge (z. B. Ohr hoch und wieder runter, Spitze in der Mitte)
+  // ["name", ...]: Gruppe aus anderen Zonen
+  "zonen": {
+    "ohr_links":  [0, 29],
+    "mitte":      [30, 69],
+    "ohr_rechts": [99, 70],
+    "ohren":      ["ohr_links", "ohr_rechts"],
+    "alle":       [0, 99]
+  },
+
+  "muster": {
+    "atmen": {
+      "dauer": 4000,
+      "ebenen": [
+        { "zone": "alle", "farbe": "gruen",
+          "helligkeit": [[0, 10], [1800, 80], [2200, 80], [4000, 10]] }
+      ]
+    },
+
+    "herzschlag": {
+      "dauer": 1100,
+      "ebenen": [
+        { "zone": "mitte", "farbe": "gruen", "helligkeit": [[0, 8]] },
+        { "zone": "ohren", "farbe": "pink",
+          "helligkeit": [[0, 15], [80, 100], [180, 30], [280, 85], [450, 15], [1100, 15]] }
+      ]
+    },
+
+    "tricolore": {
+      "dauer": 6000,
+      "ebenen": [
+        { "zone": "mitte", "farbe": "creme", "helligkeit": [[0, 25]] },
+        { "zone": "ohren", "farbe": ["pink", "orange"], "effekt": "welle", "richtung": "zur_spitze",
+          "helligkeit": [[0, 20], [3000, 90], [6000, 20]] }
+      ]
+    },
+
+    "funkeln": {
+      "dauer": 1000,
+      "ebenen": [
+        { "zone": "alle", "farbe": "petrol", "effekt": "funkeln", "helligkeit": [[0, 10]] }
+      ]
+    },
+
+    "ohrenzucken": {
+      "dauer": 350,
+      "einmalig": true,
+      "ebenen": [
+        { "zone": "ohren", "farbe": "creme", "effekt": "welle", "richtung": "zur_spitze",
+          "helligkeit": [[0, 0], [60, 100], [350, 0]] }
+      ]
+    }
+  },
+
+  "automatik": {
+    "ruhig":       "atmen",
+    "bewegung":    "herzschlag",
+    "kopfdrehung": "ohrenzucken"
+  }
+}

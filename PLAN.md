@@ -124,6 +124,25 @@ cd ~/ProtectiveMouseEars/firmware
   0x0 bootloader_c3_8m.bin 0x8000 partitions_c3_4m.bin 0xe000 boot_app0.bin 0x10000 WLED_16.0.1_ESP32-C3.bin
 ```
 
+## Eigene Firmware (läuft!)
+
+Code in `src/main.cpp`, Muster in `data/muster.json` (Format: [MUSTER.md](MUSTER.md)).
+
+```
+cd ~/ProtectiveMouseEars
+.venv/bin/pio run -t upload                 # bauen + aufspielen (nach jeder Änderung an muster.json)
+.venv/bin/pio device monitor --echo         # Konsole: Befehle eintippen, Beenden mit Strg+C
+```
+
+Befehle in der Konsole: `hilfe`, `liste`, `<mustername>`, `weiter`, `hell 40`, `info`.
+BOOT-Knopf auf der Platine = nächstes Muster. Muster und Helligkeit bleiben nach dem Ausschalten gespeichert.
+
+- [x] Grundgerüst: JSON-Muster, Zonen, Farben (Gamma-korrigiert), Strombegrenzung, Speichern
+- [x] Muster: atmen, herzschlag, tricolore, funkeln, ohrenzucken
+- [ ] Am Teststreifen anschauen und Kurven nachjustieren
+- [ ] Bluetooth-Steuerung + Steuer-Seite (GitHub Pages)
+- [ ] Bewegungssensor
+
 ## Später: Muster-Editor
 
 Wenn die **Geometrie des Haarreifs mit Ohren** feststeht (Form, LED-Positionen, welche LED wo sitzt):
