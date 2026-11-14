@@ -1,0 +1,4 @@
+.venv/
+# WLED-Testfirmware: wird aus den offiziellen Quellen geladen, siehe PLAN.md
+firmware/*.bin
+.pio/
