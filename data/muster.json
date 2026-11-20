@@ -82,6 +82,9 @@
   "automatik": {
     "ruhig":       "atmen",
     "bewegung":    "herzschlag",
-    "kopfdrehung": "ohrenzucken"
+    "kopfdrehung": "ohrenzucken",
+    "schwelle_bewegung": 0.04,  // g – kleiner = empfindlicher (mit Befehl "sensor" ausprobieren)
+    "schwelle_drehung":  150,   // Grad pro Sekunde – ab hier zucken die Ohren
+    "ruhig_nach_s":      8      // so viele Sekunden still, dann wieder "ruhig"
   }
 }

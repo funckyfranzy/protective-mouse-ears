@@ -129,9 +129,14 @@ Ein heller Blitz läuft von unten blitzschnell zur Ohrspitze und verlischt, dann
 "automatik": {
   "ruhig":       "atmen",
   "bewegung":    "herzschlag",
-  "kopfdrehung": "ohrenzucken"
+  "kopfdrehung": "ohrenzucken",
+  "schwelle_bewegung": 0.04,  // g – kleiner = empfindlicher
+  "schwelle_drehung":  150,   // Grad pro Sekunde – ab hier zucken die Ohren
+  "ruhig_nach_s":      8      // so viele Sekunden still, dann wieder "ruhig"
 }
 ```
+
+Die Schwellwerte findest du mit dem Konsolen-Befehl `sensor` heraus: Er zeigt live, wie stark du dich gerade bewegst.
 
 ## Offene Punkte
 

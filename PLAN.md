@@ -141,7 +141,24 @@ BOOT-Knopf auf der Platine = nächstes Muster. Muster und Helligkeit bleiben nac
 - [x] Muster: atmen, herzschlag, tricolore, funkeln, ohrenzucken
 - [ ] Am Teststreifen anschauen und Kurven nachjustieren
 - [ ] Bluetooth-Steuerung + Steuer-Seite (GitHub Pages)
-- [ ] Bewegungssensor
+- [x] Bewegungssensor in der Firmware (MPU-6050), Automatik ruhig ↔ Bewegung, Kopfdrehung → Zucken
+- [ ] Sensor anlöten, mit `sensor` Schwellwerte einstellen
+
+### Bewegungssensor MPU-6050 (GY-521) anschließen
+
+| MPU-6050 | ESP32-C3 Super Mini |
+|---|---|
+| VCC | **3.3** |
+| GND | **G** |
+| SCL | **6** |
+| SDA | **5** |
+| AD0, INT, XDA, XCL | frei lassen |
+
+- Kabel kurz halten (unter ca. 20 cm), I²C mag keine langen Leitungen
+- Sensor **fest** am Haarreif befestigen (Heißkleber/Schrumpfschlauch), sonst „bewegt“ er sich selbst
+- Ausrichtung ist egal, die Firmware wertet nur die Stärke der Bewegung aus
+- Konsole: `sensor` zeigt Live-Werte, `auto an` / `auto aus` schaltet die Automatik.
+  Muster von Hand wählen schaltet die Automatik aus.
 
 ## Später: Muster-Editor
 

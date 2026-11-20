@@ -10,13 +10,18 @@
 #include <ArduinoJson.h>
 #include <FastLED.h>
 #include <Preferences.h>
+#include <Wire.h>
 
 #include <vector>
 
 #define LED_PIN 4
 #define KNOPF_PIN 9  // BOOT-Knopf auf der Platine
+#define SDA_PIN 5    // MPU-6050
+#define SCL_PIN 6
+#define MPU_ADDR 0x68
 #define MAX_LEDS 400
-#define FRAME_MS 16  // ca. 60 Bilder pro Sekunde
+#define FRAME_MS 16   // ca. 60 Bilder pro Sekunde
+#define SENSOR_MS 20  // Sensor 50x pro Sekunde lesen
 
 extern const char muster_json[] asm("_binary_data_muster_json_start");
 
@@ -67,6 +72,21 @@ int einmal = -1;      // Index eines gerade ausgelösten einmaligen Musters, son
 uint32_t startAktuell = 0, startEinmal = 0;
 uint8_t helligkeit = 60;  // Prozent
 Preferences prefs;
+
+// Automatik (Bewegungssensor)
+struct Automatik {
+  bool an = true;
+  int ruhig = -1, bewegung = -1, drehung = -1;  // Muster-Indizes
+  float schwelleBewegung = 0.04f;  // g, geglättete Abweichung von der Schwerkraft
+  float schwelleDrehung = 150;     // Grad pro Sekunde
+  float ruhigNachMs = 8000;        // so lange still, bis es wieder "ruhig" ist
+} autom;
+
+bool sensorDa = false;
+bool sensorAusgabe = false;  // Messwerte auf der Konsole zeigen
+float aktivitaet = 0, drehrate = 0;
+bool inBewegung = false;
+uint32_t letzteBewegung = 0, letzteDrehung = 0;
 
 // ---------------------------------------------------------------- Laden
 
@@ -159,6 +179,56 @@ static bool ladeMuster(const char* text, String& fehler) {
     fehler = "keine Muster gefunden";
     return false;
   }
+
+  JsonObjectConst a = doc["automatik"];
+  auto index = [](const char* name) {
+    for (size_t i = 0; i < alleMuster.size(); i++)
+      if (alleMuster[i].name == name) return (int)i;
+    if (name[0]) Serial.printf("! Automatik: Muster '%s' gibt es nicht\n", name);
+    return -1;
+  };
+  autom.ruhig = index(a["ruhig"] | "");
+  autom.bewegung = index(a["bewegung"] | "");
+  autom.drehung = index(a["kopfdrehung"] | "");
+  autom.schwelleBewegung = a["schwelle_bewegung"] | 0.04f;
+  autom.schwelleDrehung = a["schwelle_drehung"] | 150.0f;
+  autom.ruhigNachMs = (a["ruhig_nach_s"] | 8.0f) * 1000;
+  return true;
+}
+
+// ---------------------------------------------------------------- Bewegungssensor (MPU-6050)
+
+static bool mpuSchreibe(uint8_t reg, uint8_t wert) {
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(reg);
+  Wire.write(wert);
+  return Wire.endTransmission() == 0;
+}
+
+static bool mpuStart() {
+  Wire.begin(SDA_PIN, SCL_PIN, 400000);
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x75);  // WHO_AM_I
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom((uint8_t)MPU_ADDR, (uint8_t)1) != 1) return false;
+  Serial.printf("Bewegungssensor gefunden (Kennung 0x%02X)\n", Wire.read());
+  return mpuSchreibe(0x6B, 0x01)     // aufwecken, Takt vom Gyro
+         && mpuSchreibe(0x1A, 0x03)  // Tiefpass ca. 44 Hz gegen Zittern
+         && mpuSchreibe(0x1B, 0x08)  // Gyro ±500 °/s
+         && mpuSchreibe(0x1C, 0x00); // Beschleunigung ±2 g
+}
+
+static bool mpuLese(float a[3], float g[3]) {
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x3B);
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom((uint8_t)MPU_ADDR, (uint8_t)14) != 14) return false;
+  int16_t v[7];
+  for (int i = 0; i < 7; i++) v[i] = (Wire.read() << 8) | Wire.read();
+  for (int i = 0; i < 3; i++) {
+    a[i] = v[i] / 16384.0f;    // in g
+    g[i] = v[i + 4] / 65.5f;   // in Grad pro Sekunde (v[3] ist die Temperatur)
+  }
   return true;
 }
 
@@ -249,6 +319,54 @@ static void naechstesMuster() {
   }
 }
 
+static void setzeAutomatik(bool an) {
+  autom.an = an;
+  prefs.putBool("auto", an);
+  Serial.printf("> Automatik: %s%s\n", an ? "an" : "aus",
+                an && !sensorDa ? " (aber kein Sensor gefunden)" : "");
+  if (an) setzeMuster(inBewegung ? autom.bewegung : autom.ruhig, false);
+}
+
+// Von Hand gewählt: Automatik aus, damit sie das Muster nicht gleich wieder ändert
+static void manuell(int i) {
+  if (i >= 0 && !alleMuster[i].einmalig && autom.an) setzeAutomatik(false);
+  setzeMuster(i);
+}
+
+static void sensorSchritt() {
+  static uint32_t letzteMessung = 0, letzteAusgabe = 0;
+  uint32_t jetzt = millis();
+  if (!sensorDa || jetzt - letzteMessung < SENSOR_MS) return;
+  letzteMessung = jetzt;
+
+  float a[3], g[3];
+  if (!mpuLese(a, g)) return;
+  float betrag = sqrtf(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+  aktivitaet = 0.95f * aktivitaet + 0.05f * fabsf(betrag - 1.0f);  // geglättet über ca. 0,4 s
+  drehrate = sqrtf(g[0] * g[0] + g[1] * g[1] + g[2] * g[2]);
+
+  if (aktivitaet > autom.schwelleBewegung) letzteBewegung = jetzt;
+  bool jetztBewegung = jetzt - letzteBewegung < autom.ruhigNachMs && letzteBewegung > 0;
+  if (jetztBewegung != inBewegung) {
+    inBewegung = jetztBewegung;
+    Serial.printf("~ %s\n", inBewegung ? "Bewegung" : "ruhig");
+    if (autom.an) setzeMuster(inBewegung ? autom.bewegung : autom.ruhig, false);
+  }
+
+  if (drehrate > autom.schwelleDrehung && jetzt - letzteDrehung > 1500) {
+    letzteDrehung = jetzt;
+    Serial.printf("~ Kopfdrehung (%.0f Grad/s)\n", drehrate);
+    if (autom.an) setzeMuster(autom.drehung, false);
+  }
+
+  if (sensorAusgabe && jetzt - letzteAusgabe > 200) {
+    letzteAusgabe = jetzt;
+    Serial.printf("aktiv %.3f g (Schwelle %.3f)  dreh %4.0f Grad/s (Schwelle %.0f)  %s\n",
+                  aktivitaet, autom.schwelleBewegung, drehrate, autom.schwelleDrehung,
+                  inBewegung ? "BEWEGUNG" : "ruhig");
+  }
+}
+
 static void setzeHelligkeit(int prozent) {
   helligkeit = constrain(prozent, 0, 100);
   FastLED.setBrightness(helligkeit * 255 / 100);
@@ -262,6 +380,8 @@ static void hilfe() {
   Serial.println("  <name>         Muster starten (einmalige Muster werden ausgeloest)");
   Serial.println("  weiter         naechstes Muster");
   Serial.println("  hell <0-100>   Helligkeit in Prozent");
+  Serial.println("  auto an|aus    Automatik per Bewegungssensor");
+  Serial.println("  sensor         Messwerte live anzeigen (nochmal eintippen = aus)");
   Serial.println("  info           Status");
 }
 
@@ -274,16 +394,28 @@ static void befehl(String z) {
       Serial.printf("  %s%s\n", m.name.c_str(), m.einmalig ? "  (einmalig)" : "");
     return;
   }
-  if (z == "weiter") return naechstesMuster();
+  if (z == "weiter") {
+    if (autom.an) setzeAutomatik(false);
+    return naechstesMuster();
+  }
   if (z.startsWith("hell")) return setzeHelligkeit(z.substring(4).toInt());
+  if (z == "auto an" || z == "auto") return setzeAutomatik(true);
+  if (z == "auto aus") return setzeAutomatik(false);
+  if (z == "sensor") {
+    if (!sensorDa) return (void)Serial.println("! Kein Bewegungssensor gefunden (Verkabelung?)");
+    sensorAusgabe = !sensorAusgabe;
+    return;
+  }
   if (z == "info") {
     Serial.printf("LEDs: %d, Muster: %s, Helligkeit: %d %%, Muster gesamt: %d\n", anzahl,
                   aktuell >= 0 ? alleMuster[aktuell].name.c_str() : "-", helligkeit,
                   (int)alleMuster.size());
+    Serial.printf("Sensor: %s, Automatik: %s, Zustand: %s\n", sensorDa ? "ja" : "nein",
+                  autom.an ? "an" : "aus", inBewegung ? "Bewegung" : "ruhig");
     return;
   }
   int i = findeMuster(z);
-  if (i >= 0) return setzeMuster(i);
+  if (i >= 0) return manuell(i);
   Serial.printf("? Unbekannt: '%s' (hilfe eintippen)\n", z.c_str());
 }
 
@@ -317,7 +449,12 @@ void setup() {
     }
   }
 
+  sensorDa = mpuStart();
+  if (!sensorDa) Serial.println("Kein Bewegungssensor gefunden, Automatik ruht.");
+  autom.an = prefs.getBool("auto", true);
+
   int start = findeMuster(prefs.getString("muster", d["start"] | ""));
+  if (autom.an && sensorDa && autom.ruhig >= 0) start = autom.ruhig;
   if (start < 0 || alleMuster[start].einmalig) start = 0;
   setzeMuster(start, false);
   Serial.printf("Protective Mouse Ears bereit: %d LEDs, %d Muster. 'hilfe' fuer Befehle.\n",
@@ -345,9 +482,12 @@ void loop() {
   bool knopf = digitalRead(KNOPF_PIN);
   if (!knopf && knopfVorher && millis() - knopfZeit > 200) {
     knopfZeit = millis();
+    if (autom.an) setzeAutomatik(false);
     naechstesMuster();
   }
   knopfVorher = knopf;
+
+  sensorSchritt();
 
   // Bild malen
   uint32_t jetzt = millis();
